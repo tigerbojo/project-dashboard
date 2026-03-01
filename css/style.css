@@ -1,0 +1,141 @@
+/* ── Custom Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #30363d; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC',
+               Helvetica, Arial, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+/* ── Kanban columns ──────────────────────────────────────────────────────── */
+.kanban-col {
+  min-width: 300px;
+  max-width: 380px;
+  flex: 1 1 300px;
+}
+
+.kanban-col.drag-over {
+  outline: 2px dashed #58a6ff;
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+
+/* ── Issue / PR cards ────────────────────────────────────────────────────── */
+.issue-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: grab;
+}
+
+.issue-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.issue-card:active { cursor: grabbing; }
+
+/* ── Fade-in ─────────────────────────────────────────────────────────────── */
+[x-cloak] { display: none !important; }
+
+.fade-enter { animation: fadeIn 0.2s ease; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Notification slide ──────────────────────────────────────────────────── */
+.notif-enter { animation: slideIn 0.25s ease; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Progress bar ────────────────────────────────────────────────────────── */
+.progress-bar {
+  transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ── Modal backdrop ──────────────────────────────────────────────────────── */
+.modal-backdrop {
+  backdrop-filter: blur(4px);
+}
+
+/* ── Textarea resize ─────────────────────────────────────────────────────── */
+textarea { resize: vertical; }
+
+/* ── Tab active line ─────────────────────────────────────────────────────── */
+.tab-active {
+  border-bottom: 2px solid #f78166;
+}
+
+/* ── Label pill ──────────────────────────────────────────────────────────── */
+.label-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 18px;
+}
+
+/* ── Sidebar repo item ───────────────────────────────────────────────────── */
+.repo-item {
+  transition: background 0.1s ease;
+}
+.repo-item:hover { background: rgba(255,255,255,0.06); }
+.repo-item.active { background: rgba(88, 166, 255, 0.12); }
+
+/* ── Setup screen ────────────────────────────────────────────────────────── */
+.setup-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+}
+
+/* ── Button base ─────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:hover  { filter: brightness(1.12); }
+.btn:active { filter: brightness(0.9); }
+
+.btn-primary {
+  background: #238636;
+  color: #fff;
+  border: 1px solid #2ea043;
+}
+
+.btn-blue {
+  background: #1f6feb;
+  color: #fff;
+  border: 1px solid #388bfd;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+
+.btn-danger {
+  background: transparent;
+  color: #f85149;
+  border: 1px solid #f8514940;
+}

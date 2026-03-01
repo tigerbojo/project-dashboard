@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Dashboard</title>
+
+  <!-- Tailwind CSS (CDN) -->
+  <script>
+    tailwind = { config: {
+      darkMode: 'class',
+      theme: { extend: { colors: {
+        gh: {
+          bg:      '#0d1117',
+          card:    '#161b22',
+          hover:   '#1c2128',
+          border:  '#30363d',
+          text:    '#c9d1d9',
+          muted:   '#8b949e',
+          blue:    '#58a6ff',
+          green:   '#3fb950',
+          yellow:  '#d29922',
+          red:     '#f85149',
+          purple:  '#bc8cff',
+          orange:  '#e3b341',
+        }
+      }}}
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Alpine.js (CDN) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body class="bg-gh-bg text-gh-text min-h-screen">
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--  ROOT APP                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div x-data="dashboard()" x-init="init()" x-cloak
+     @keydown.escape.window="showModal = false; showSettings = false; showNewIssue = false;">
+
+  <!-- ── Loading Overlay ───────────────────────────────────────────────── -->
+  <div x-show="isLoading"
+       class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gh-bg/80 modal-backdrop">
+    <svg class="animate-spin w-10 h-10 text-gh-blue mb-4" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path  class="opacity-75" fill="currentColor"
+             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+    <p class="text-gh-muted text-sm" x-text="loadingMessage"></p>
+  </div>
+
+  <!-- ── Notifications ──────────────────────────────────────────────────── -->
+  <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-72">
+    <template x-for="n in notifications" :key="n.id">
+      <div class="notif-enter flex items-center gap-3 px-4 py-3 rounded-lg text-sm shadow-xl border"
+           :class="{
+             'bg-green-900/80 border-green-700/50 text-green-300': n.type === 'success',
+             'bg-red-900/80   border-red-700/50   text-red-300':   n.type === 'error',
+             'bg-gh-card      border-gh-border    text-gh-text':   n.type === 'info',
+           }">
+        <!-- icon -->
+        <span x-show="n.type === 'success'">✓</span>
+        <span x-show="n.type === 'error'">✕</span>
+        <span x-show="n.type === 'info'">ℹ</span>
+        <span x-text="n.msg" class="flex-1"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!--  STEP 1 — TOKEN ENTRY                                               -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div x-show="!isAuthenticated && !isLoading"
+       class="min-h-screen flex items-center justify-center p-4">
+    <div class="setup-card w-full max-w-md p-8 space-y-6">
+
+      <!-- Logo -->
+      <div class="text-center">
+        <div class="text-4xl mb-3">📊</div>
+        <h1 class="text-2xl font-bold text-gh-text">Project Dashboard</h1>
+        <p class="text-gh-muted text-sm mt-1">連接您的 GitHub 帳號開始使用</p>
+      </div>
+
+      <!-- Token form -->
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gh-text mb-1">
+            GitHub Personal Access Token
+          </label>
+          <input type="password"
+                 x-model="token"
+                 @keyup.enter="authenticate()"
+                 placeholder="ghp_xxxxxxxxxxxx"
+                 class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2.5
+                        text-gh-text placeholder-gh-muted focus:outline-none
+                        focus:border-gh-blue text-sm font-mono" />
+          <p class="text-gh-muted text-xs mt-1.5">
+            需要 <code class="bg-gh-bg px-1 py-0.5 rounded text-xs">repo</code> 權限。
+            <a href="https://github.com/settings/tokens/new" target="_blank"
+               class="text-gh-blue hover:underline">建立 Token →</a>
+          </p>
+        </div>
+
+        <button @click="authenticate()" :disabled="!token"
+                class="btn btn-primary w-full justify-center py-2.5 text-base"
+                :class="{ 'opacity-50 cursor-not-allowed': !token }">
+          連接 GitHub
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!--  STEP 2 — REPO SELECTION                                            -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div x-show="isAuthenticated && setupStep === 'repos' && !isLoading"
+       class="min-h-screen flex flex-col items-center p-6">
+
+    <div class="w-full max-w-2xl space-y-5">
+      <!-- Header -->
+      <div class="text-center">
+        <div class="flex items-center justify-center gap-3 mb-2">
+          <img :src="user?.avatar_url" :alt="user?.login"
+               class="w-9 h-9 rounded-full border border-gh-border" />
+          <h2 class="text-xl font-bold">選擇要追蹤的 Repositories</h2>
+        </div>
+        <p class="text-gh-muted text-sm">選完後可隨時在側邊欄新增或移除</p>
+      </div>
+
+      <!-- Search + manual add -->
+      <div class="flex gap-2">
+        <input x-model="repoSearch" placeholder="搜尋 repo…"
+               class="flex-1 bg-gh-card border border-gh-border rounded-lg px-3 py-2
+                      text-sm text-gh-text placeholder-gh-muted focus:outline-none focus:border-gh-blue" />
+        <input x-model="newRepoInput" @keyup.enter="addCustomRepo()"
+               placeholder="owner/repo"
+               class="w-40 bg-gh-card border border-gh-border rounded-lg px-3 py-2
+                      text-sm text-gh-text placeholder-gh-muted focus:outline-none focus:border-gh-blue font-mono" />
+        <button @click="addCustomRepo()" class="btn btn-ghost">+ 手動加入</button>
+      </div>
+
+      <!-- Repo list -->
+      <div class="setup-card overflow-y-auto max-h-96 divide-y divide-gh-border/50">
+        <template x-for="repo in filteredUserRepos" :key="repo.full_name">
+          <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gh-hover transition-colors">
+            <input type="checkbox" :checked="isTracked(repo.full_name)"
+                   @change="toggleRepo(repo.full_name)"
+                   class="w-4 h-4 accent-gh-blue rounded" />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-gh-text truncate" x-text="repo.full_name"></div>
+              <div class="text-xs text-gh-muted truncate mt-0.5" x-text="repo.description || '無說明'"></div>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gh-muted shrink-0">
+              <span x-show="repo.language" class="bg-gh-bg px-2 py-0.5 rounded-full border border-gh-border"
+                    x-text="repo.language"></span>
+              <span>⭐ <span x-text="repo.stargazers_count"></span></span>
+            </div>
+          </label>
+        </template>
+        <div x-show="filteredUserRepos.length === 0"
+             class="px-4 py-8 text-center text-gh-muted text-sm">找不到符合的 repo</div>
+      </div>
+
+      <!-- Selected count + proceed -->
+      <div class="flex items-center justify-between">
+        <span class="text-gh-muted text-sm">
+          已選 <span class="text-gh-text font-medium" x-text="trackedRepos.length"></span> 個 repos
+        </span>
+        <button @click="startDashboard()" :disabled="trackedRepos.length === 0"
+                class="btn btn-primary px-6 py-2.5"
+                :class="{ 'opacity-50 cursor-not-allowed': trackedRepos.length === 0 }">
+          開始使用 →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!--  STEP 3 — DASHBOARD                                                 -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div x-show="setupStep === 'dashboard'" class="flex h-screen overflow-hidden">
+
+    <!-- ──────────────────────────────────────────────────────────────── -->
+    <!--  SIDEBAR                                                         -->
+    <!-- ──────────────────────────────────────────────────────────────── -->
+    <aside class="w-52 shrink-0 bg-gh-card border-r border-gh-border flex flex-col overflow-hidden">
+
+      <!-- App title -->
+      <div class="px-4 py-3.5 border-b border-gh-border">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">📊</span>
+          <span class="font-bold text-sm text-gh-text">Project Dashboard</span>
+        </div>
+      </div>
+
+      <!-- User info -->
+      <div class="px-4 py-3 border-b border-gh-border flex items-center gap-2">
+        <img :src="user?.avatar_url" class="w-7 h-7 rounded-full border border-gh-border" />
+        <span class="text-xs text-gh-muted truncate" x-text="user?.login"></span>
+      </div>
+
+      <!-- Repos nav -->
+      <div class="flex-1 overflow-y-auto py-2">
+        <p class="px-4 pt-2 pb-1 text-xs text-gh-muted font-semibold tracking-wider uppercase">
+          Repositories
+        </p>
+
+        <!-- All -->
+        <button @click="activeRepo = 'all'; loadAllData()"
+                class="repo-item w-full text-left px-4 py-2 text-sm flex items-center justify-between"
+                :class="activeRepo === 'all' ? 'active text-gh-blue' : 'text-gh-text'">
+          <span class="flex items-center gap-2">
+            <span class="text-base">🗂</span> 全部
+          </span>
+          <span class="text-xs text-gh-muted" x-text="issues.length"></span>
+        </button>
+
+        <!-- Individual repos -->
+        <template x-for="r in repoStats" :key="r.fullName">
+          <button @click="activeRepo = r.fullName; loadAllData()"
+                  class="repo-item w-full text-left px-4 py-2 text-sm flex items-center justify-between group"
+                  :class="activeRepo === r.fullName ? 'active text-gh-blue' : 'text-gh-text'">
+            <span class="truncate text-xs" x-text="r.shortName" :title="r.fullName"></span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="text-xs text-gh-muted" x-text="r.open > 0 ? r.open : ''"></span>
+              <button @click.stop="removeRepo(r.fullName)"
+                      class="hidden group-hover:flex text-gh-muted hover:text-gh-red text-xs">✕</button>
+            </div>
+          </button>
+        </template>
+
+        <!-- Add repo -->
+        <div class="px-3 py-2 mt-1">
+          <div class="flex gap-1">
+            <input x-model="newRepoInput" @keyup.enter="addCustomRepo()"
+                   placeholder="owner/repo"
+                   class="flex-1 min-w-0 bg-gh-bg border border-gh-border rounded px-2 py-1
+                          text-xs text-gh-text placeholder-gh-muted focus:outline-none
+                          focus:border-gh-blue font-mono" />
+            <button @click="addCustomRepo()"
+                    class="px-2 py-1 text-xs bg-gh-bg border border-gh-border rounded
+                           text-gh-muted hover:text-gh-text hover:border-gh-blue transition-colors">
+              +
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom actions -->
+      <div class="border-t border-gh-border px-3 py-3 space-y-1">
+        <button @click="showSettings = true"
+                class="w-full text-left px-3 py-1.5 text-xs text-gh-muted hover:text-gh-text
+                       rounded flex items-center gap-2 transition-colors">
+          ⚙️ 設定
+        </button>
+        <button @click="logout()"
+                class="w-full text-left px-3 py-1.5 text-xs text-gh-muted hover:text-gh-red
+                       rounded flex items-center gap-2 transition-colors">
+          ↩ 登出
+        </button>
+      </div>
+    </aside>
+
+    <!-- ──────────────────────────────────────────────────────────────── -->
+    <!--  MAIN CONTENT                                                    -->
+    <!-- ──────────────────────────────────────────────────────────────── -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- Top Bar -->
+      <header class="bg-gh-card border-b border-gh-border px-5 py-2.5 flex items-center gap-3 shrink-0">
+
+        <!-- Repo title -->
+        <h2 class="font-semibold text-sm text-gh-text min-w-0 truncate">
+          <span x-text="activeRepo === 'all' ? '全部 Repositories' : activeRepo"></span>
+        </h2>
+
+        <!-- Spacer -->
+        <div class="flex-1"></div>
+
+        <!-- Search -->
+        <div class="relative">
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gh-muted text-xs">🔍</span>
+          <input x-model="searchQuery" placeholder="搜尋 issue…"
+                 class="bg-gh-bg border border-gh-border rounded-lg pl-7 pr-3 py-1.5 text-xs
+                        text-gh-text placeholder-gh-muted focus:outline-none focus:border-gh-blue w-44" />
+        </div>
+
+        <!-- Label filter -->
+        <select x-model="filterLabel"
+                class="bg-gh-bg border border-gh-border rounded-lg px-2 py-1.5 text-xs
+                       text-gh-text focus:outline-none focus:border-gh-blue">
+          <option value="">所有標籤</option>
+          <template x-for="l in allLabels" :key="l">
+            <option :value="l" x-text="l"></option>
+          </template>
+        </select>
+
+        <!-- New Issue -->
+        <button @click="showNewIssue = true; newIssue.repo = activeRepo === 'all' ? (trackedRepos[0] || '') : activeRepo"
+                class="btn btn-primary text-xs py-1.5">
+          + New Issue
+        </button>
+
+        <!-- Refresh -->
+        <button @click="refresh()" :disabled="isLoading"
+                class="btn btn-ghost text-xs py-1.5 px-2.5"
+                title="重新整理">
+          <span :class="isLoading ? 'animate-spin inline-block' : ''">↻</span>
+          <span class="text-gh-muted" x-text="refreshedLabel"></span>
+        </button>
+
+      </header>
+
+      <!-- Stats Bar -->
+      <div class="bg-gh-card border-b border-gh-border px-5 py-2.5 flex items-center gap-5 shrink-0">
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
+          <span class="text-gh-muted text-xs">待辦</span>
+          <span class="font-bold text-gh-text" x-text="stats.open - stats.inProgress"></span>
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="w-2.5 h-2.5 rounded-full bg-yellow-500 inline-block"></span>
+          <span class="text-gh-muted text-xs">進行中</span>
+          <span class="font-bold text-gh-text" x-text="stats.inProgress"></span>
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block"></span>
+          <span class="text-gh-muted text-xs">完成</span>
+          <span class="font-bold text-gh-text" x-text="stats.closed"></span>
+        </div>
+        <div class="w-px h-4 bg-gh-border mx-1"></div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="text-gh-muted text-xs">PR</span>
+          <span class="font-bold text-gh-blue" x-text="stats.openPRs + ' open'"></span>
+          <span class="text-gh-muted text-xs">/ <span x-text="stats.mergedPRs"></span> merged</span>
+        </div>
+        <div class="flex-1"></div>
+        <!-- Overall progress -->
+        <div class="flex items-center gap-2" x-show="stats.total > 0">
+          <span class="text-xs text-gh-muted">總進度</span>
+          <div class="w-24 h-2 bg-gh-bg rounded-full overflow-hidden border border-gh-border">
+            <div class="progress-bar h-full bg-gh-green rounded-full"
+                 :style="`width: ${stats.progress}%`"></div>
+          </div>
+          <span class="text-xs font-mono text-gh-text" x-text="stats.progress + '%'"></span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <nav class="bg-gh-card border-b border-gh-border px-5 flex items-center gap-0 shrink-0">
+        <template x-for="tab in [
+          { id: 'overview', label: '總覽', icon: '📈' },
+          { id: 'issues',   label: 'Issues',  icon: '🎯' },
+          { id: 'pulls',    label: 'Pull Requests', icon: '🔀' },
+        ]" :key="tab.id">
+          <button @click="activeTab = tab.id"
+                  class="flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors"
+                  :class="activeTab === tab.id
+                    ? 'border-gh-orange text-gh-text font-medium'
+                    : 'border-transparent text-gh-muted hover:text-gh-text'">
+            <span x-text="tab.icon"></span>
+            <span x-text="tab.label"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- ── Tab Content ─────────────────────────────────────────────── -->
+      <div class="flex-1 overflow-auto">
+
+        <!-- ════ OVERVIEW TAB ════ -->
+        <div x-show="activeTab === 'overview'" class="p-5 space-y-5">
+
+          <!-- Per-repo progress -->
+          <div>
+            <h3 class="text-sm font-semibold text-gh-text mb-3">Repositories 進度</h3>
+            <div class="space-y-3">
+              <template x-for="r in repoStats" :key="r.fullName">
+                <div class="bg-gh-card border border-gh-border rounded-lg p-4
+                            cursor-pointer hover:border-gh-blue/50 transition-colors"
+                     @click="activeRepo = r.fullName; activeTab = 'issues'; loadAllData()">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <span class="text-sm font-medium text-gh-text" x-text="r.shortName"></span>
+                      <span class="text-xs text-gh-muted ml-2" x-text="r.fullName"></span>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs text-gh-muted">
+                      <span>🔴 <span x-text="r.open"></span> open</span>
+                      <span>✅ <span x-text="r.closed"></span> closed</span>
+                      <span x-show="r.openPRs > 0" class="text-gh-blue">
+                        🔀 <span x-text="r.openPRs"></span> PR
+                      </span>
+                      <span class="font-mono text-gh-text" x-text="r.progress + '%'"></span>
+                    </div>
+                  </div>
+                  <div class="h-2 bg-gh-bg rounded-full overflow-hidden border border-gh-border">
+                    <div class="progress-bar h-full rounded-full"
+                         :class="r.progress >= 80 ? 'bg-gh-green' : r.progress >= 40 ? 'bg-gh-yellow' : 'bg-gh-blue'"
+                         :style="`width: ${r.progress}%`">
+                    </div>
+                  </div>
+                  <div class="mt-1.5 text-right text-xs text-gh-muted">
+                    <span x-text="`${r.closed} / ${r.total} issues 完成`"></span>
+                  </div>
+                </div>
+              </template>
+              <div x-show="repoStats.length === 0"
+                   class="text-center py-12 text-gh-muted text-sm">
+                尚未追蹤任何 repository
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent issues (open) -->
+          <div x-show="todoIssues.length > 0 || inProgressIssues.length > 0">
+            <h3 class="text-sm font-semibold text-gh-text mb-3">最近的 Issues</h3>
+            <div class="space-y-1.5">
+              <template x-for="issue in [...inProgressIssues, ...todoIssues].slice(0,8)" :key="issue.id">
+                <div @click="openModal(issue)"
+                     class="bg-gh-card border border-gh-border rounded-lg px-4 py-3
+                            flex items-center gap-3 cursor-pointer hover:border-gh-blue/50 transition-colors">
+                  <span class="text-lg" x-text="issue.state === 'open' && _isInProgress(issue) ? '🔄' : '🟢'"></span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm text-gh-text truncate" x-text="issue.title"></div>
+                    <div class="text-xs text-gh-muted mt-0.5">
+                      <span x-text="issue.repoFullName"></span> ·
+                      <span x-text="'#' + issue.number"></span> ·
+                      <span x-text="timeAgo(issue.updated_at)"></span>
+                    </div>
+                  </div>
+                  <div class="flex gap-1 shrink-0">
+                    <template x-for="label in issue.labels.slice(0,3)" :key="label.id">
+                      <span class="label-pill" :style="labelStyle(label.color)" x-text="label.name"></span>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ ISSUES TAB (KANBAN) ════ -->
+        <div x-show="activeTab === 'issues'" class="h-full">
+          <div class="flex gap-4 p-4 h-full overflow-x-auto">
+
+            <!-- ── Todo Column ── -->
+            <div class="kanban-col flex flex-col bg-gh-card border border-gh-border rounded-lg overflow-hidden"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop.prevent="onDrop('todo')"
+                 @dragover="$el.classList.add('drag-over')"
+                 @dragleave="$el.classList.remove('drag-over')"
+                 @drop="$el.classList.remove('drag-over')">
+
+              <!-- Column header -->
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gh-border shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                  <span class="text-sm font-semibold">待辦</span>
+                </div>
+                <span class="text-xs bg-gh-bg border border-gh-border rounded-full px-2 py-0.5"
+                      x-text="todoIssues.length"></span>
+              </div>
+
+              <!-- Cards -->
+              <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                <template x-for="issue in todoIssues" :key="issue.id">
+                  <div class="issue-card bg-gh-hover border border-gh-border rounded-lg p-3 fade-enter"
+                       draggable="true"
+                       @dragstart="onDragStart(issue)">
+                    <!-- Repo + number -->
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-gh-muted truncate" x-text="issue.repo"></span>
+                      <span class="text-xs text-gh-muted font-mono shrink-0 ml-1">#<span x-text="issue.number"></span></span>
+                    </div>
+                    <!-- Title -->
+                    <p class="text-sm text-gh-text font-medium leading-snug mb-2"
+                       x-text="issue.title"></p>
+                    <!-- Labels -->
+                    <div class="flex flex-wrap gap-1 mb-2" x-show="issue.labels.length > 0">
+                      <template x-for="label in issue.labels.slice(0,4)" :key="label.id">
+                        <span class="label-pill" :style="labelStyle(label.color)" x-text="label.name"></span>
+                      </template>
+                    </div>
+                    <!-- Footer -->
+                    <div class="flex items-center justify-between mt-1">
+                      <div class="flex items-center gap-1.5">
+                        <template x-for="a in issue.assignees?.slice(0,2) || []" :key="a.id">
+                          <img :src="a.avatar_url" :title="a.login"
+                               class="w-5 h-5 rounded-full border border-gh-border" />
+                        </template>
+                        <span class="text-xs text-gh-muted" x-text="timeAgo(issue.updated_at)"></span>
+                      </div>
+                      <div class="flex gap-1">
+                        <button @click.stop="openModal(issue)"
+                                class="text-xs text-gh-muted hover:text-gh-blue px-1.5 py-0.5
+                                       rounded border border-gh-border/50 hover:border-gh-blue/50 transition-colors"
+                                title="編輯">✏</button>
+                        <a :href="issue.html_url" target="_blank" @click.stop
+                           class="text-xs text-gh-muted hover:text-gh-blue px-1.5 py-0.5
+                                  rounded border border-gh-border/50 hover:border-gh-blue/50 transition-colors"
+                           title="在 GitHub 開啟">↗</a>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="todoIssues.length === 0"
+                     class="text-center py-10 text-gh-muted text-xs">
+                  沒有待辦 issues
+                </div>
+              </div>
+            </div>
+
+            <!-- ── In Progress Column ── -->
+            <div class="kanban-col flex flex-col bg-gh-card border border-gh-border rounded-lg overflow-hidden"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop.prevent="onDrop('inprogress')"
+                 @dragover="$el.classList.add('drag-over')"
+                 @dragleave="$el.classList.remove('drag-over')"
+                 @drop="$el.classList.remove('drag-over')">
+
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gh-border shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
+                  <span class="text-sm font-semibold">進行中</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gh-muted"
+                        x-text="`標籤: ${inProgressLabel}`"></span>
+                  <span class="text-xs bg-gh-bg border border-gh-border rounded-full px-2 py-0.5"
+                        x-text="inProgressIssues.length"></span>
+                </div>
+              </div>
+
+              <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                <template x-for="issue in inProgressIssues" :key="issue.id">
+                  <div class="issue-card bg-gh-hover border border-yellow-600/30 rounded-lg p-3 fade-enter"
+                       draggable="true"
+                       @dragstart="onDragStart(issue)">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-gh-muted truncate" x-text="issue.repo"></span>
+                      <span class="text-xs text-gh-muted font-mono shrink-0 ml-1">#<span x-text="issue.number"></span></span>
+                    </div>
+                    <p class="text-sm text-gh-text font-medium leading-snug mb-2"
+                       x-text="issue.title"></p>
+                    <div class="flex flex-wrap gap-1 mb-2" x-show="issue.labels.length > 0">
+                      <template x-for="label in issue.labels.slice(0,4)" :key="label.id">
+                        <span class="label-pill" :style="labelStyle(label.color)" x-text="label.name"></span>
+                      </template>
+                    </div>
+                    <div class="flex items-center justify-between mt-1">
+                      <div class="flex items-center gap-1.5">
+                        <template x-for="a in issue.assignees?.slice(0,2) || []" :key="a.id">
+                          <img :src="a.avatar_url" :title="a.login"
+                               class="w-5 h-5 rounded-full border border-gh-border" />
+                        </template>
+                        <span class="text-xs text-gh-muted" x-text="timeAgo(issue.updated_at)"></span>
+                      </div>
+                      <div class="flex gap-1">
+                        <button @click.stop="openModal(issue)"
+                                class="text-xs text-gh-muted hover:text-gh-blue px-1.5 py-0.5
+                                       rounded border border-gh-border/50 hover:border-gh-blue/50 transition-colors">✏</button>
+                        <a :href="issue.html_url" target="_blank" @click.stop
+                           class="text-xs text-gh-muted hover:text-gh-blue px-1.5 py-0.5
+                                  rounded border border-gh-border/50 hover:border-gh-blue/50 transition-colors">↗</a>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="inProgressIssues.length === 0"
+                     class="text-center py-10 text-gh-muted text-xs">
+                  拖拉 issue 到此欄
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Done Column ── -->
+            <div class="kanban-col flex flex-col bg-gh-card border border-gh-border rounded-lg overflow-hidden"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop.prevent="onDrop('done')"
+                 @dragover="$el.classList.add('drag-over')"
+                 @dragleave="$el.classList.remove('drag-over')"
+                 @drop="$el.classList.remove('drag-over')">
+
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gh-border shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                  <span class="text-sm font-semibold">完成</span>
+                </div>
+                <span class="text-xs bg-gh-bg border border-gh-border rounded-full px-2 py-0.5"
+                      x-text="doneTotalCount"></span>
+              </div>
+
+              <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                <template x-for="issue in doneIssues" :key="issue.id">
+                  <div class="issue-card bg-gh-hover border border-gh-border rounded-lg p-3
+                              opacity-70 hover:opacity-100 fade-enter"
+                       draggable="true"
+                       @dragstart="onDragStart(issue)">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-gh-muted truncate" x-text="issue.repo"></span>
+                      <span class="text-xs text-gh-muted font-mono shrink-0 ml-1">#<span x-text="issue.number"></span></span>
+                    </div>
+                    <p class="text-sm text-gh-muted line-through leading-snug mb-2"
+                       x-text="issue.title"></p>
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-gh-muted" x-text="timeAgo(issue.closed_at || issue.updated_at)"></span>
+                      <div class="flex gap-1">
+                        <button @click.stop="openModal(issue)"
+                                class="text-xs text-gh-muted hover:text-gh-blue px-1.5 py-0.5
+                                       rounded border border-gh-border/50 hover:border-gh-blue/50 transition-colors">✏</button>
+                        <a :href="issue.html_url" target="_blank" @click.stop
+                           class="text-xs text-gh-muted hover:text-gh-blue px-1.5 py-0.5
+                                  rounded border border-gh-border/50 hover:border-gh-blue/50 transition-colors">↗</a>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="doneTotalCount > doneLimit"
+                     class="text-center py-3">
+                  <button @click="doneLimit += 30"
+                          class="text-xs text-gh-blue hover:underline">
+                    顯示更多 (<span x-text="doneTotalCount - doneLimit"></span> 筆)
+                  </button>
+                </div>
+                <div x-show="doneIssues.length === 0"
+                     class="text-center py-10 text-gh-muted text-xs">
+                  沒有完成的 issues
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ════ PULL REQUESTS TAB ════ -->
+        <div x-show="activeTab === 'pulls'" class="p-5 space-y-3">
+
+          <!-- Sections: Open | Draft | Merged | Closed -->
+          <template x-for="section in [
+            { key: 'open',   list: openPulls,   label: 'Open',   color: 'text-green-400', icon: '🟢' },
+            { key: 'draft',  list: draftPulls,  label: 'Draft',  color: 'text-gray-400',  icon: '📝' },
+            { key: 'merged', list: mergedPulls, label: 'Merged', color: 'text-purple-400',icon: '🔮' },
+            { key: 'closed', list: closedPulls, label: 'Closed', color: 'text-red-400',   icon: '🔴' },
+          ]" :key="section.key">
+            <div x-show="section.list.length > 0">
+              <h3 class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-2 flex items-center gap-2">
+                <span x-text="section.icon"></span>
+                <span x-text="section.label"></span>
+                <span class="bg-gh-card border border-gh-border rounded-full px-2 py-px"
+                      x-text="section.list.length"></span>
+              </h3>
+              <div class="space-y-1.5">
+                <template x-for="pr in section.list" :key="pr.id">
+                  <div class="bg-gh-card border border-gh-border rounded-lg px-4 py-3
+                              flex items-center gap-3 hover:border-gh-blue/50 transition-colors">
+                    <!-- State badge -->
+                    <span class="shrink-0 text-xs px-2 py-0.5 rounded-full border font-medium"
+                          :class="prStateColor(pr)"
+                          x-text="prStateLabel(pr)"></span>
+                    <!-- Title -->
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm text-gh-text truncate font-medium" x-text="pr.title"></div>
+                      <div class="text-xs text-gh-muted mt-0.5">
+                        <span x-text="pr.repoFullName"></span> ·
+                        <span x-text="'#' + pr.number"></span> ·
+                        <span x-text="timeAgo(pr.merged_at || pr.closed_at || pr.updated_at)"></span>
+                        <span x-show="pr.user"> · by
+                          <span x-text="pr.user?.login"></span>
+                        </span>
+                      </div>
+                    </div>
+                    <!-- Assignees -->
+                    <div class="flex -space-x-1 shrink-0">
+                      <template x-for="rev in pr.requested_reviewers?.slice(0,3) || []" :key="rev.id">
+                        <img :src="rev.avatar_url" :title="rev.login"
+                             class="w-6 h-6 rounded-full border-2 border-gh-card" />
+                      </template>
+                    </div>
+                    <!-- Links -->
+                    <div class="flex gap-1.5 shrink-0">
+                      <span class="text-xs text-gh-muted" x-show="pr.commits !== undefined">
+                        📝 <span x-text="pr.commits"></span>
+                      </span>
+                      <a :href="pr.html_url" target="_blank"
+                         class="btn btn-ghost text-xs py-1 px-2">↗ GitHub</a>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <div x-show="filteredPulls.length === 0"
+               class="text-center py-16 text-gh-muted">
+            沒有 Pull Requests
+          </div>
+        </div>
+
+      </div><!-- end tab content -->
+    </div><!-- end main -->
+  </div><!-- end dashboard -->
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!--  EDIT MODAL                                                         -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div x-show="showModal"
+       class="fixed inset-0 z-40 flex items-center justify-center p-4">
+    <!-- Backdrop -->
+    <div @click="closeModal()"
+         class="absolute inset-0 bg-black/60 modal-backdrop"></div>
+
+    <!-- Modal box — only rendered in DOM when modal data is ready -->
+    <template x-if="modal">
+      <div class="relative bg-gh-card border border-gh-border rounded-xl shadow-2xl
+                  w-full max-w-2xl max-h-[90vh] flex flex-col fade-enter z-50"
+           @click.stop>
+
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gh-border shrink-0">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="text-gh-muted font-mono text-sm shrink-0"
+                  x-text="'#' + modal.number"></span>
+            <span class="text-xs text-gh-muted shrink-0"
+                  x-text="modal.repoFullName"></span>
+            <span class="text-xs px-2 py-0.5 rounded-full border shrink-0"
+                  :class="modal._state === 'open'
+                    ? 'text-green-400 bg-green-400/10 border-green-400/30'
+                    : 'text-purple-400 bg-purple-400/10 border-purple-400/30'"
+                  x-text="modal._state === 'open' ? 'Open' : 'Closed'"></span>
+          </div>
+          <button @click="closeModal()"
+                  class="text-gh-muted hover:text-gh-text text-xl leading-none p-1">×</button>
+        </div>
+
+        <!-- Modal Body (scrollable) -->
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          <!-- Title -->
+          <div>
+            <label class="block text-xs font-medium text-gh-muted mb-1">標題</label>
+            <input x-model="modal._title" type="text"
+                   class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                          text-sm text-gh-text focus:outline-none focus:border-gh-blue" />
+          </div>
+
+          <!-- State toggle -->
+          <div>
+            <label class="block text-xs font-medium text-gh-muted mb-2">狀態</label>
+            <div class="flex gap-2">
+              <button @click="modal._state = 'open'"
+                      class="btn text-xs py-1.5 px-3"
+                      :class="modal._state === 'open' ? 'btn-primary' : 'btn-ghost'">
+                🟢 Open
+              </button>
+              <button @click="modal._state = 'closed'"
+                      class="btn text-xs py-1.5 px-3"
+                      :class="modal._state === 'closed' ? 'bg-purple-800 text-purple-200 border border-purple-600' : 'btn-ghost'">
+                ✅ Closed
+              </button>
+            </div>
+          </div>
+
+          <!-- Labels -->
+          <div x-show="labels[modal.repoFullName]?.length > 0">
+            <label class="block text-xs font-medium text-gh-muted mb-2">Labels</label>
+            <div class="flex flex-wrap gap-1.5">
+              <template x-for="label in (labels[modal.repoFullName] || [])" :key="label.id">
+                <button @click="modalToggleLabel(label)"
+                        class="label-pill cursor-pointer transition-opacity"
+                        :style="labelStyle(label.color)"
+                        :class="modalHasLabel(label.name) ? 'opacity-100 ring-1 ring-white/30' : 'opacity-40'"
+                        x-text="label.name">
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Milestone -->
+          <div x-show="milestones[modal.repoFullName]?.length > 0">
+            <label class="block text-xs font-medium text-gh-muted mb-1">Milestone</label>
+            <select x-model="modal._milestoneNum"
+                    class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                           text-sm text-gh-text focus:outline-none focus:border-gh-blue">
+              <option value="">無 milestone</option>
+              <template x-for="ms in (milestones[modal.repoFullName] || [])" :key="ms.id">
+                <option :value="String(ms.number)" x-text="ms.title"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- Body -->
+          <div>
+            <label class="block text-xs font-medium text-gh-muted mb-1">描述 (Markdown)</label>
+            <textarea x-model="modal._body" rows="8"
+                      class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                             text-sm text-gh-text focus:outline-none focus:border-gh-blue font-mono leading-relaxed"
+                      placeholder="輸入 issue 描述…"></textarea>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="flex items-center justify-between px-5 py-4 border-t border-gh-border shrink-0">
+          <a :href="modal.html_url" target="_blank"
+             class="btn btn-ghost text-xs py-1.5">
+            ↗ 在 GitHub 開啟
+          </a>
+          <div class="flex gap-2">
+            <button @click="closeModal()" class="btn btn-ghost text-xs py-1.5">取消</button>
+            <button @click="saveModal()" class="btn btn-primary text-xs py-1.5">
+              💾 儲存變更
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!--  NEW ISSUE MODAL                                                    -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div x-show="showNewIssue"
+       class="fixed inset-0 z-40 flex items-center justify-center p-4">
+    <div @click="showNewIssue = false"
+         class="absolute inset-0 bg-black/60 modal-backdrop"></div>
+    <div class="relative bg-gh-card border border-gh-border rounded-xl shadow-2xl
+                w-full max-w-lg z-50 fade-enter" @click.stop>
+
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gh-border">
+        <h3 class="font-semibold text-sm">建立新 Issue</h3>
+        <button @click="showNewIssue = false" class="text-gh-muted hover:text-gh-text text-xl">×</button>
+      </div>
+
+      <div class="px-5 py-4 space-y-4">
+        <div>
+          <label class="block text-xs text-gh-muted mb-1">Repository</label>
+          <select x-model="newIssue.repo"
+                  class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                         text-sm text-gh-text focus:outline-none focus:border-gh-blue">
+            <template x-for="r in trackedRepos" :key="r">
+              <option :value="r" x-text="r"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gh-muted mb-1">標題</label>
+          <input x-model="newIssue.title" type="text"
+                 class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                        text-sm text-gh-text focus:outline-none focus:border-gh-blue"
+                 placeholder="Issue 標題…" />
+        </div>
+        <div>
+          <label class="block text-xs text-gh-muted mb-1">描述 (可選)</label>
+          <textarea x-model="newIssue.body" rows="5"
+                    class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                           text-sm text-gh-text focus:outline-none focus:border-gh-blue font-mono"
+                    placeholder="Markdown 格式…"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 px-5 py-4 border-t border-gh-border">
+        <button @click="showNewIssue = false" class="btn btn-ghost text-xs py-1.5">取消</button>
+        <button @click="submitNewIssue()"
+                :disabled="!newIssue.repo || !newIssue.title"
+                class="btn btn-primary text-xs py-1.5"
+                :class="{ 'opacity-50 cursor-not-allowed': !newIssue.repo || !newIssue.title }">
+          建立 Issue
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!--  SETTINGS PANEL                                                     -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div x-show="showSettings"
+       class="fixed inset-0 z-40 flex items-center justify-center p-4">
+    <div @click="showSettings = false"
+         class="absolute inset-0 bg-black/60 modal-backdrop"></div>
+    <div class="relative bg-gh-card border border-gh-border rounded-xl shadow-2xl
+                w-full max-w-md z-50 fade-enter" @click.stop>
+
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gh-border">
+        <h3 class="font-semibold text-sm">⚙️ 設定</h3>
+        <button @click="showSettings = false" class="text-gh-muted hover:text-gh-text text-xl">×</button>
+      </div>
+
+      <div class="px-5 py-4 space-y-5">
+
+        <!-- In-progress label -->
+        <div>
+          <label class="block text-sm font-medium text-gh-text mb-1">
+            「進行中」標籤名稱
+          </label>
+          <input x-model="inProgressLabel" type="text"
+                 class="w-full bg-gh-bg border border-gh-border rounded-lg px-3 py-2
+                        text-sm text-gh-text focus:outline-none focus:border-gh-blue font-mono"
+                 placeholder="in-progress" />
+          <p class="text-xs text-gh-muted mt-1.5">
+            Issues 有此 label 會顯示在「進行中」欄位。<br/>
+            拖拉 issue 到「進行中」欄時也會自動加上此 label。
+          </p>
+        </div>
+
+        <!-- Token reset -->
+        <div>
+          <label class="block text-sm font-medium text-gh-text mb-1">帳號</label>
+          <div class="flex items-center gap-3">
+            <img :src="user?.avatar_url" class="w-8 h-8 rounded-full border border-gh-border" />
+            <span class="text-sm text-gh-muted" x-text="user?.login"></span>
+            <button @click="logout()" class="btn btn-danger text-xs py-1 ml-auto">登出</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="flex justify-end gap-2 px-5 py-4 border-t border-gh-border">
+        <button @click="showSettings = false" class="btn btn-ghost text-xs py-1.5">取消</button>
+        <button @click="saveSettings()" class="btn btn-primary text-xs py-1.5">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end root -->
+
+<script src="js/github.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
