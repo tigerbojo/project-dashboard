@@ -41,6 +41,11 @@ class GitHubAPI {
     return this.req('/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator');
   }
 
+  getAllUserRepos() {
+    // Paginated — fetches ALL repos (for auto-sync)
+    return this.getAllPages('/user/repos?sort=updated&affiliation=owner,collaborator');
+  }
+
   // ─── Paginated Fetcher ─────────────────────────────────────────────────────
 
   async getAllPages(path) {

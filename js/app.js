@@ -173,6 +173,32 @@ function dashboard() {
       this.newRepoInput = '';
     },
 
+    async syncAllRepos() {
+      this.isLoading = true;
+      this.loadingMessage = '同步所有 GitHub repos…';
+      try {
+        const repos = await this.api.getAllUserRepos();
+        let added = 0;
+        for (const repo of repos) {
+          if (!this.trackedRepos.includes(repo.full_name)) {
+            this.trackedRepos.push(repo.full_name);
+            added++;
+          }
+        }
+        localStorage.setItem('tracked_repos', JSON.stringify(this.trackedRepos));
+        if (added > 0) {
+          this.notify(`已加入 ${added} 個新 repos`, 'success');
+          await this.loadAllData();
+        } else {
+          this.notify('沒有新的 repos', 'info');
+        }
+      } catch (e) {
+        this.notify('同步失敗：' + e.message, 'error');
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
     removeRepo(fullName) {
       const idx = this.trackedRepos.indexOf(fullName);
       if (idx >= 0) {
