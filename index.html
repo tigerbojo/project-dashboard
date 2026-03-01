@@ -222,16 +222,16 @@
 
         <!-- Individual repos -->
         <template x-for="r in repoStats" :key="r.fullName">
-          <button @click="activeRepo = r.fullName; loadAllData()"
-                  class="repo-item w-full text-left px-4 py-2 text-sm flex items-center justify-between group"
-                  :class="activeRepo === r.fullName ? 'active text-gh-blue' : 'text-gh-text'">
+          <div @click="activeRepo = r.fullName; loadAllData()"
+               class="repo-item w-full text-left px-4 py-2 text-sm flex items-center justify-between group cursor-pointer"
+               :class="activeRepo === r.fullName ? 'active text-gh-blue' : 'text-gh-text'">
             <span class="truncate text-xs" x-text="r.shortName" :title="r.fullName"></span>
             <div class="flex items-center gap-1.5 shrink-0">
               <span class="text-xs text-gh-muted" x-text="r.open > 0 ? r.open : ''"></span>
               <button @click.stop="removeRepo(r.fullName)"
-                      class="hidden group-hover:flex text-gh-muted hover:text-gh-red text-xs">✕</button>
+                      class="hidden group-hover:inline-flex text-gh-muted hover:text-red-500 text-xs px-1">✕</button>
             </div>
-          </button>
+          </div>
         </template>
 
         <!-- Sync all repos -->
